@@ -52,24 +52,32 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function scanQRCode() {
-        scanner.start(
-            { facingMode: "environment" },
-            { fps: 10, qrbox: 250 },
-            (decodedText) => {
-                scanner.stop();
-                let upiId = decodedText.match(/upi:\/\/pay\?pa=([^&]+)/);
-                if (upiId) {
-                    let upiLink = `${decodedText}&am=${amountInput.value}`;
-                    saveTransaction(upiId[1], amountInput.value, categoryInput.value);
-                    window.location.href = upiLink;
-                } else {
-                    alert("Invalid UPI QR Code");
-                }
-            },
-            (error) => {
-                console.log(error);
-            }
-        );
+        // Ensuring iOS compatibility for camera permissions
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(() => {
+                scanner.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: 250 },
+                    (decodedText) => {
+                        scanner.stop();
+                        let upiId = decodedText.match(/upi:\/\/pay\?pa=([^&]+)/);
+                        if (upiId) {
+                            let upiLink = `${decodedText}&am=${amountInput.value}`;
+                            saveTransaction(upiId[1], amountInput.value, categoryInput.value);
+                            window.open(upiLink, "_blank");  // iOS Fix
+                        } else {
+                            alert("Invalid UPI QR Code");
+                        }
+                    },
+                    (error) => {
+                        console.log(error);
+                    }
+                );
+            })
+            .catch(err => {
+                alert("Camera access is required for QR scanning.");
+                console.error(err);
+            });
     }
 
     function exportToCSV() {
