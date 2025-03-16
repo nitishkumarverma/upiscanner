@@ -7,10 +7,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const exportBtn = document.getElementById("export-history");
     const searchInput = document.getElementById("search-transaction");
 
-    // Load transaction history from local storage
+    // Load transaction history
     loadTransactionHistory();
 
-    // Click event for "Scan & Pay" button
     scanPayButton.addEventListener("click", function () {
         if (!amountInput.value || isNaN(amountInput.value) || Number(amountInput.value) <= 0) {
             alert("Please enter a valid amount.");
@@ -20,11 +19,10 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     function startQRCodeScan() {
-        // Ensure camera permissions are allowed
         navigator.mediaDevices.getUserMedia({ video: true })
             .then(() => {
                 scanner.start(
-                    { facingMode: "environment" }, // Use back camera
+                    { facingMode: "environment" }, 
                     { fps: 10, qrbox: 250 },
                     (decodedText) => {
                         scanner.stop();
@@ -51,17 +49,15 @@ document.addEventListener("DOMContentLoaded", function () {
         let upiId = upiMatch[1];
         let upiLink = `${qrData}&am=${amountInput.value}`;
 
-        // Save transaction in local storage
+        // Save transaction
         saveTransaction(upiId, amountInput.value, categoryInput.value);
 
-        // Confirm before redirecting to UPI app
+        // iOS Safari Fix: Open via User Interaction
         let confirmPayment = confirm("Proceed with payment in UPI App?");
         if (confirmPayment) {
-            if (navigator.userAgent.includes("iPhone") || navigator.userAgent.includes("iPad")) {
-                window.open(upiLink, "_self"); // iOS Fix
-            } else {
-                window.location.href = upiLink; // Android & other devices
-            }
+            setTimeout(() => {
+                window.location.href = upiLink;
+            }, 500); // Delay to ensure Safari doesn't block it
         }
     }
 
@@ -77,8 +73,6 @@ document.addEventListener("DOMContentLoaded", function () {
 
         transactions.unshift(transaction);
         localStorage.setItem("transactions", JSON.stringify(transactions));
-
-        // Update UI
         loadTransactionHistory();
     }
 
@@ -99,7 +93,6 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    // Export transaction history as CSV
     exportBtn.addEventListener("click", function () {
         let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
         if (transactions.length === 0) {
@@ -122,7 +115,6 @@ document.addEventListener("DOMContentLoaded", function () {
         document.body.removeChild(a);
     });
 
-    // Search and filter transactions
     searchInput.addEventListener("input", function () {
         let filterText = searchInput.value.toLowerCase();
         let rows = transactionHistory.getElementsByTagName("tr");
