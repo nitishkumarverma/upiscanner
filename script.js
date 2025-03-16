@@ -1,76 +1,37 @@
 document.addEventListener("DOMContentLoaded", function () {
-    const scanner = new Html5Qrcode("reader");
-    const scanPayBtn = document.getElementById("scanPay");
+    const scanner = new Html5Qrcode("qr-scanner");
     const amountInput = document.getElementById("amount");
     const categoryInput = document.getElementById("category");
-    const historyTable = document.getElementById("history");
-    const searchInput = document.getElementById("search");
-    const exportBtn = document.getElementById("export");
-    const summaryList = document.getElementById("summary");
+    const scanPayButton = document.getElementById("scan-pay");
+    const transactionHistory = document.getElementById("transaction-history");
+    const exportBtn = document.getElementById("export-history");
+    const searchInput = document.getElementById("search-transaction");
 
-    function updateTransactionHistory() {
-        let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
-        historyTable.innerHTML = "";
-        transactions.forEach(tx => {
-            let row = `<tr>
-                <td>${tx.date}</td>
-                <td>${tx.upiId}</td>
-                <td>${tx.amount}</td>
-                <td>${tx.category}</td>
-            </tr>`;
-            historyTable.innerHTML += row;
-        });
-        updateSummary(transactions);
-    }
+    // Load transaction history from local storage
+    loadTransactionHistory();
 
-    function updateSummary(transactions) {
-        let summary = {};
-        transactions.forEach(tx => {
-            if (!summary[tx.category]) {
-                summary[tx.category] = 0;
-            }
-            summary[tx.category] += parseFloat(tx.amount);
-        });
-
-        summaryList.innerHTML = "";
-        for (let category in summary) {
-            summaryList.innerHTML += `<li>${category}: ₹${summary[category].toFixed(2)}</li>`;
+    // Click event for "Scan & Pay" button
+    scanPayButton.addEventListener("click", function () {
+        if (!amountInput.value || isNaN(amountInput.value) || Number(amountInput.value) <= 0) {
+            alert("Please enter a valid amount.");
+            return;
         }
-    }
+        startQRCodeScan();
+    });
 
-    function saveTransaction(upiId, amount, category) {
-        let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
-        let newTransaction = {
-            date: new Date().toLocaleString(),
-            upiId,
-            amount,
-            category
-        };
-        transactions.push(newTransaction);
-        localStorage.setItem("transactions", JSON.stringify(transactions));
-        updateTransactionHistory();
-    }
-
-    function scanQRCode() {
-        // Ensuring iOS compatibility for camera permissions
+    function startQRCodeScan() {
+        // Ensure camera permissions are allowed
         navigator.mediaDevices.getUserMedia({ video: true })
             .then(() => {
                 scanner.start(
-                    { facingMode: "environment" },
+                    { facingMode: "environment" }, // Use back camera
                     { fps: 10, qrbox: 250 },
                     (decodedText) => {
                         scanner.stop();
-                        let upiId = decodedText.match(/upi:\/\/pay\?pa=([^&]+)/);
-                        if (upiId) {
-                            let upiLink = `${decodedText}&am=${amountInput.value}`;
-                            saveTransaction(upiId[1], amountInput.value, categoryInput.value);
-                            window.open(upiLink, "_blank");  // iOS Fix
-                        } else {
-                            alert("Invalid UPI QR Code");
-                        }
+                        processUPI(decodedText);
                     },
                     (error) => {
-                        console.log(error);
+                        console.error(error);
                     }
                 );
             })
@@ -80,48 +41,95 @@ document.addEventListener("DOMContentLoaded", function () {
             });
     }
 
-    function exportToCSV() {
+    function processUPI(qrData) {
+        let upiMatch = qrData.match(/upi:\/\/pay\?pa=([^&]+)/);
+        if (!upiMatch) {
+            alert("Invalid UPI QR Code. Please scan a valid code.");
+            return;
+        }
+
+        let upiId = upiMatch[1];
+        let upiLink = `${qrData}&am=${amountInput.value}`;
+
+        // Save transaction in local storage
+        saveTransaction(upiId, amountInput.value, categoryInput.value);
+
+        // Confirm before redirecting to UPI app
+        let confirmPayment = confirm("Proceed with payment in UPI App?");
+        if (confirmPayment) {
+            if (navigator.userAgent.includes("iPhone") || navigator.userAgent.includes("iPad")) {
+                window.open(upiLink, "_self"); // iOS Fix
+            } else {
+                window.location.href = upiLink; // Android & other devices
+            }
+        }
+    }
+
+    function saveTransaction(upiId, amount, category) {
         let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
-        let csvContent = "Date,UPI ID,Amount,Category\n";
-        transactions.forEach(tx => {
-            csvContent += `${tx.date},${tx.upiId},${tx.amount},${tx.category}\n`;
+        let transaction = {
+            id: transactions.length + 1,
+            upiId: upiId,
+            amount: parseFloat(amount).toFixed(2),
+            category: category,
+            date: new Date().toLocaleString()
+        };
+
+        transactions.unshift(transaction);
+        localStorage.setItem("transactions", JSON.stringify(transactions));
+
+        // Update UI
+        loadTransactionHistory();
+    }
+
+    function loadTransactionHistory() {
+        let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+        transactionHistory.innerHTML = "";
+
+        transactions.forEach((txn) => {
+            let row = document.createElement("tr");
+            row.innerHTML = `
+                <td>${txn.id}</td>
+                <td>${txn.upiId}</td>
+                <td>₹${txn.amount}</td>
+                <td>${txn.category}</td>
+                <td>${txn.date}</td>
+            `;
+            transactionHistory.appendChild(row);
+        });
+    }
+
+    // Export transaction history as CSV
+    exportBtn.addEventListener("click", function () {
+        let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+        if (transactions.length === 0) {
+            alert("No transactions to export.");
+            return;
+        }
+
+        let csvContent = "Transaction ID,UPI ID,Amount,Category,Date\n";
+        transactions.forEach((txn) => {
+            csvContent += `${txn.id},${txn.upiId},${txn.amount},${txn.category},${txn.date}\n`;
         });
 
         let blob = new Blob([csvContent], { type: "text/csv" });
-        let link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = "transactions.csv";
-        link.click();
-    }
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement("a");
+        a.href = url;
+        a.download = "UPI_Transactions.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    });
 
+    // Search and filter transactions
     searchInput.addEventListener("input", function () {
-        let query = searchInput.value.toLowerCase();
-        let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
-        let filtered = transactions.filter(tx => 
-            tx.upiId.toLowerCase().includes(query) ||
-            tx.category.toLowerCase().includes(query)
-        );
-        historyTable.innerHTML = "";
-        filtered.forEach(tx => {
-            let row = `<tr>
-                <td>${tx.date}</td>
-                <td>${tx.upiId}</td>
-                <td>${tx.amount}</td>
-                <td>${tx.category}</td>
-            </tr>`;
-            historyTable.innerHTML += row;
-        });
-    });
+        let filterText = searchInput.value.toLowerCase();
+        let rows = transactionHistory.getElementsByTagName("tr");
 
-    scanPayBtn.addEventListener("click", function () {
-        if (!amountInput.value || parseFloat(amountInput.value) <= 0) {
-            alert("Enter a valid amount");
-            return;
+        for (let row of rows) {
+            let text = row.textContent.toLowerCase();
+            row.style.display = text.includes(filterText) ? "" : "none";
         }
-        scanQRCode();
     });
-
-    exportBtn.addEventListener("click", exportToCSV);
-
-    updateTransactionHistory();
 });
